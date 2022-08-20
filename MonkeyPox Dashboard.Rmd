@@ -1,0 +1,161 @@
+---
+title: "MonkeyPox Dashboard in US"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    source_code: embed  
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+# Load libraries
+library(data.table)
+library(dplyr)
+library(leaflet)
+library(shiny)
+library(flexdashboard)
+library(plotly)
+library(DT)
+library(lubridate)
+options(scipen=999)
+
+```
+
+Dashboard
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Total Cases in US {.value-box}
+
+```{r}
+renderValueBox({
+  us<-fread('www/2022 U.S. Map & Case Count.csv')%>%
+  filter(Location %in% c('Total'))
+  valueBox(
+    value = us$Cases,
+    icon = "fa-area-chart",
+    color='#00cc66'
+  )
+})
+```
+
+
+### Daily Cases in US {.value-box}
+
+```{r}
+renderValueBox({
+  df <- fread("www/U.S. Monkeypox Case Trends Reported to CDC.csv")
+  df$Date <- mdy(df$epi_date)  
+  df_<-df%>%
+    filter(Date==max(df$Date))
+  valueBox(
+    value = df_$Cases,
+    icon = "#66ccff",
+    color='blue'
+  )
+})
+```
+
+
+### Last Update:  {.value-box}
+
+```{r}
+renderValueBox({
+  df <- fread("www/U.S. Monkeypox Case Trends Reported to CDC.csv")
+  df$Date <- mdy(df$epi_date)  
+  df_<-df%>%
+    filter(Date==max(df$Date))
+  valueBox(
+    value = df_$Date,
+    icon = "#993333",
+    color='red'
+  )
+})
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### 2022 U.S. Map & Case Count {data-width=700}
+
+```{r}
+map_data<-reactive({
+  us<-fread('www/2022 U.S. Map & Case Count.csv')%>%
+  filter(!(Location %in% c("Non-US Resident",'Total')))
+
+lon_lat<-fread('www/lon_lat_states.csv')
+df<-as.data.frame(left_join(us,lon_lat,by=c('Location')))
+df.expanded <- df[rep(row.names(df), df$Cases),]
+})
+
+us_trend<-reactive({
+  df <- fread("www/U.S. Monkeypox Case Trends Reported to CDC.csv")
+  df$Date <- mdy(df$epi_date)
+  df<-as.data.frame(df)
+
+})
+
+```
+
+
+```{r}
+
+renderLeaflet({leaflet() %>% 
+  addTiles() %>%
+  addMapPane("labels", zIndex = 430) %>% # Level 3: top
+  # addMapPane("polygons", zIndex = 420) %>%  # Level 2: middle
+  addMapPane("background_map", zIndex = 410) %>% # Level 1: bottom    
+  addProviderTiles(providers$CartoDB.PositronNoLabels,
+                   options = pathOptions(pane = "background_map"))%>%
+  setView(lng=-96, lat=37.8,zoom= 4)%>%
+  addMarkers(data=map_data(),
+             lng=~lon,
+             lat=~lat,
+             clusterOptions = markerClusterOptions())%>%
+  addProviderTiles(
+    #providers$CartoDB.PositronOnlyLabels,
+    providers$Stamen.TonerHybrid,
+    options = pathOptions(pane = "labels")
+  )
+})
+```
+
+### U.S. Monkeypox Case Trends Reported to CDC {data-width=340}
+
+```{r}
+renderPlotly({
+  fig <- plot_ly(us_trend(),
+               x = ~Date, 
+               y = ~Cases, 
+               type = 'bar',
+               # text = ~Cases,
+               hoverinfo = "text",
+               hovertext = paste("Date:",us_trend()$Date,
+                                 "<br>",
+                                 "Cases:", us_trend()$Cases)
+
+               )%>%
+  layout(margin = list(l = 50, r = 50, b = 100, t = 50),
+         annotations = list(x = 1, y = -0.3, text = paste("Source: Centers for Disease Control and Prevention")
+                            ,
+                            xref='paper', yref='paper', showarrow = F, 
+                            xanchor='right', yanchor='auto', xshift=0, yshift=0,
+                            font = list(size = 10)))%>%
+  # layout(title = 'U.S. Monkeypox Case Trends Reported to CDC')%>% 
+    config(displayModeBar = FALSE)
+
+fig
+})
+
+```
+
+Source
+=======================================================================
+
+ * **CDC: https://www.cdc.gov/poxvirus/monkeypox/response/2022/us-map.html**
+ 
+ * **Other MonkeyPox Dataset: https://github.com/globaldothealth/monkeypox**
